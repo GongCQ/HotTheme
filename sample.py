@@ -64,6 +64,7 @@ class Theme:
     def __init__(self, themeId):
         self.themeId = themeId
         self.docList = []
+        self.docIdSet = set()
         self.vecMean = None
         self.senSimMat = None
         self.senList = []
@@ -71,7 +72,9 @@ class Theme:
         self.absDoc = None
 
     def AddDoc(self, doc):
-        self.docList.append(doc)
+        if doc.docId not in self.docIdSet:
+            self.docList.append(doc)
+            self.docIdSet.add(doc.docId)
 
     def EvalAbsDoc(self):
         '''
@@ -108,12 +111,14 @@ class Theme:
         # # greed
         # for i in self.cenSort:
         #     self.absDoc += self.senList[i].GetContent()
+        #     if self.absDoc[-1] != '\n':
+        #         self.absDoc += '\n'
         #     if len(self.absDoc) >= length:
         #         break
         # --------------------------------
         # divers
         absSenSeqSet = set()
-        penaltyWeight = 0.1
+        penaltyWeight = 0.2
         for i in self.cenSort:
             # evaluate the similarity between current sentence and the picked sentences
             pickedSimList = []
@@ -121,8 +126,9 @@ class Theme:
                 curSen = self.senList[s] # current sentence
                 pickedSim = 0
                 for pickedSenSeq in absSenSeqSet:
-                    pickedSim += curSen.Sim(self.senList[pickedSenSeq])
-                pickedSim /= (len(absSenSeqSet) if len(absSenSeqSet) > 0 else 1)
+                    sim = curSen.Sim(self.senList[pickedSenSeq])
+                    pickedSim += sim
+                pickedSim /= max(len(absSenSeqSet), 1)
                 pickedSimList.append(pickedSim)
             mmr = (1 - penaltyWeight) * np.array(self.centroidList) - \
                   penaltyWeight * np.array(pickedSimList)
@@ -130,7 +136,9 @@ class Theme:
             for s in mmrSort:
                 if s not in absSenSeqSet:
                     absSenSeqSet.add(s)
-                    self.absDoc += self.senList[mmrSort[s]].GetContent()
+                    self.absDoc += self.senList[s].GetContent()
+                    if self.absDoc[-1] != '\n':
+                        self.absDoc += '\n'
                     break
 
             if len(self.absDoc) >= length:
@@ -187,7 +195,7 @@ class HotTheme:
         rough clustering for initial use
         :return:
         '''
-        sepSet = {'。', '\n'}
+        sepSet = {'。', '\n', '；', '！', '？'}
         ignoreSet = {'\u3000'}
         self.ClearThemeCluster()
         for docId, doc in self.docDict.items():
@@ -202,7 +210,7 @@ class HotTheme:
                     doc.AddThemeId(word)
                 # cut to sentence
                 sen.AppendWord(word)
-                if (word in sepSet or w == len(doc.parse) - 1) and len(sen.parse) > 1:
+                if (word in sepSet or w == len(doc.parse) - 1) and len(sen.parse) > 2:
                     doc.AddSen(sen)
                     sen = Sen(docId)
 
@@ -242,17 +250,17 @@ class HotTheme:
         for themeId, theme in self.themeDict.items():
             print('')
             print(str(dt.datetime.now()) + ' ' + themeId + ': document number is ' + str(len(theme.docList)))
-            # if themeId == '医药电商':
+            # if themeId == '无人机':
             if len(theme.docList) >= 2:
                 theme.EvalAbsDoc()
                 print(theme.absDoc)
 
 
-# mc = pm.MongoClient('mongodb://gongcq:gcq@192.168.5.120:27017/text')
-mc = pm.MongoClient('mongodb://gongcq:gcq@localhost:27017/text')
+mc = pm.MongoClient('mongodb://gongcq:gcq@192.168.5.208:27017/text')
+# mc = pm.MongoClient('mongodb://gongcq:gcq@localhost:27017/text')
 db = mc['text']
 
-timeScope = [dt.datetime(2017, 11, 7), dt.datetime(2017, 11, 9)]
+timeScope = [dt.datetime(2017, 11, 2), dt.datetime(2017, 11, 9)]
 docs = db.section.find({'time': {'$gte': timeScope[0], '$lt': timeScope[1]}})
 docDict = {}
 for doc in docs:
@@ -262,7 +270,7 @@ for doc in docs:
 
 # rough clustering, and cut to text sentence.
 sepSet = {'。', '\n'}
-themeSet = Public.FileToSet(os.path.join('.', 'config', 'theme'))
+themeSet = Public.FileToSet(os.path.join('.', 'config', 'theme.txt'))
 themeKeyword = {}
 for themeId in themeSet:
     themeKeyword[themeId] = set()
